@@ -1,0 +1,102 @@
+/* ===========================
+   1. RESET GLOBAL (OBLIGATOIRE)
+   =========================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden !important; /* ✅ BLOQUE TOUT scroll horizontal */
+  overflow-y: auto;
+  height: 100%;
+  position: relative;
+}
+
+/* ===========================
+   2. CONTAINER PRINCIPAL
+   =========================== */
+.app-container {
+  /* Remplace le chemin par l'emplacement réel de ton image par rapport à ton fichier CSS */
+  background-image: url('./assets/bg-bayene.jpg'); 
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Voile blanc semi-transparent par-dessus l'image pour garder un style épuré et lisible */
+.app-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.85); /* Ajuste l'opacité ici si besoin (0.85 = 85% de blanc) */
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* S'assure que tout le contenu reste bien au-dessus du voile blanc */
+.app-container > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* ===========================
+   5. MEDIA QUERY MOBILE (CORRECTION FINALE)
+   =========================== */
+@media (max-width: 640px) {
+  .app-container {
+    /* Ajustement fin pour les petits écrans */
+    background-position: center center; /* ✅ Meilleur centrage vertical */
+    min-height: 100dvh; /* ✅ dvh = dynamic viewport (mieux que svh) */
+    
+    /* Supprime les marges par défaut des navigateurs mobiles */
+    margin: 0;
+    padding: 0;
+    
+    /* Force l'image à bien couvrir */
+    background-size: cover;
+    background-attachment: scroll;
+  }
+  
+  /* Astuce pour les très petits écrans (Redmi Note 8, iPhone SE) */
+  @media (max-height: 650px) {
+    .app-container {
+      min-height: 100dvh;
+    }
+  }
+}
+
+/* ===========================
+   6. SUPPRESSION DES BARRES DE DÉFILEMENT PAR DÉFAUT
+   =========================== */
+/* Pour les produits carrousel si nécessaire */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
+/* ✅ Force l'image à ne jamais dépasser */
+section.relative.w-full.overflow-hidden {
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+}
+
+/* ✅ Pour l'image de fond */
+section.relative.w-full.overflow-hidden > div {
+  max-width: 100vw !important;
+}
+
+/* ✅ Supprime toute marge/padding par défaut */
+section {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
