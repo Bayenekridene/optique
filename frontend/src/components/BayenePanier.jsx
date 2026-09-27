@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 import { useSelector, useDispatch } from 'react-redux';
 
@@ -35,6 +35,15 @@ export default function Cart() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingCart, setIsLoadingCart] = useState(true);
+
+  // ======================================================
+  // LIVRAISON
+  // ======================================================
+
+  const [deliverySettings, setDeliverySettings] = useState({
+    type: 'fixed',
+    amount: 10,
+  });
 
   const API_URL =
     process.env.REACT_APP_API_URL ||
@@ -94,6 +103,41 @@ export default function Cart() {
   }, [dispatch, userInfo, isApproved]);
 
   // ======================================================
+  // RÉCUPÉRER LES PARAMÈTRES DE LIVRAISON
+  // ======================================================
+
+  useEffect(() => {
+    const loadDeliverySettings = async () => {
+      try {
+        const response = await fetch(
+          `${API_URL}/delivery`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ||
+              'Impossible de récupérer la livraison.'
+          );
+        }
+
+        setDeliverySettings({
+          type: data.type || 'fixed',
+          amount: Number(data.amount || 0),
+        });
+      } catch (error) {
+        console.error(
+          '❌ Erreur récupération livraison :',
+          error
+        );
+      }
+    };
+
+    loadDeliverySettings();
+  }, []);
+
+  // ======================================================
   // SAUVEGARDER LE PANIER BACKEND
   // ======================================================
 
@@ -103,21 +147,43 @@ export default function Cart() {
     }
 
     try {
-      const backendItems = cartItems.map(
-        (item) => ({
-          productId:
-            item._id || item.id,
+      const backendItems = cartItems
+        .map((item) => {
+          const productId =
+            item.productId ||
+            item._id ||
+            item.id;
 
-          quantite:
-            Number(item.quantite || 1),
+          return {
+            productId,
+            quantite: Number(
+              item.quantite || 1
+            ),
+          };
         })
+        .filter(
+          (item) =>
+            item.productId &&
+            Number.isInteger(item.quantite) &&
+            item.quantite > 0
+        );
+
+      console.log(
+        '📦 Panier envoyé à MySQL :',
+        backendItems
       );
 
-      const response =
-        await saveCart(backendItems);
+      const response = await saveCart(
+        backendItems
+      );
 
       const savedItems =
         response.data?.items || [];
+
+      console.log(
+        '✅ Panier reçu de MySQL :',
+        savedItems
+      );
 
       dispatch(
         updateBackendCart(savedItems)
@@ -125,7 +191,7 @@ export default function Cart() {
     } catch (error) {
       console.error(
         '❌ Erreur synchronisation panier :',
-        error
+        error.response?.data || error
       );
     }
   };
@@ -172,10 +238,16 @@ export default function Cart() {
     0
   );
 
+  // ======================================================
+  // LIVRAISON DYNAMIQUE
+  // ======================================================
+
   const shipping =
-    total >= 150 || total === 0
+    total === 0
       ? 0
-      : 10;
+      : deliverySettings.type === 'free'
+        ? 0
+        : Number(deliverySettings.amount);
 
   const finalTotal =
     total + shipping;
@@ -210,7 +282,9 @@ export default function Cart() {
     const updatedItems = items
       .map((item) => {
         const itemId =
-          item._id || item.id;
+          item.productId ||
+          item._id ||
+          item.id;
 
         if (
           itemId?.toString() ===
@@ -240,11 +314,17 @@ export default function Cart() {
 
   const handleRemove = async (id) => {
     const updatedItems =
-      items.filter(
-        (item) =>
-          (item._id || item.id)?.toString() !==
+      items.filter((item) => {
+        const itemId =
+          item.productId ||
+          item._id ||
+          item.id;
+
+        return (
+          itemId?.toString() !==
           id?.toString()
-      );
+        );
+      });
 
     dispatch(
       removeFromCart(id)
@@ -287,7 +367,9 @@ export default function Cart() {
       const checkoutItems =
         items.map((item) => ({
           productId:
-            item._id || item.id,
+            item.productId ||
+            item._id ||
+            item.id,
 
           quantity:
             Number(item.quantite || 1),
@@ -343,8 +425,8 @@ export default function Cart() {
       if (!response.ok) {
         throw new Error(
           data?.error ||
-          data?.message ||
-          'Erreur lors de la création du paiement.'
+            data?.message ||
+            'Erreur lors de la création du paiement.'
         );
       }
 
@@ -369,7 +451,7 @@ export default function Cart() {
 
       alert(
         error.message ||
-        'Une erreur est survenue lors du paiement.'
+          'Une erreur est survenue lors du paiement.'
       );
 
       setIsProcessing(false);
@@ -438,6 +520,7 @@ export default function Cart() {
           </p>
 
           <div className="w-16 h-[1px] bg-[#9E6B6B] mx-auto pt-2" />
+
         </div>
 
         {/* PANIER VIDE */}
@@ -524,7 +607,9 @@ export default function Cart() {
                   );
 
                 const itemId =
-                  item._id || item.id;
+                  item.productId ||
+                  item._id ||
+                  item.id;
 
                 return (
 
@@ -559,6 +644,7 @@ export default function Cart() {
 
                       <p className="text-xs text-neutral-500 font-light">
                         {item.categorie ||
+                          item.category ||
                           'Édition Atelier'}
                       </p>
 
@@ -708,14 +794,6 @@ export default function Cart() {
 
                   </div>
 
-                  {shipping > 0 && (
-
-                    <p className="text-[10px] text-neutral-500 italic">
-                      Livraison offerte dès 150 € d'achat.
-                    </p>
-
-                  )}
-
                 </div>
 
                 {/* TOTAL */}
@@ -789,7 +867,6 @@ export default function Cart() {
             </div>
 
           </div>
-
         )}
 
       </div>

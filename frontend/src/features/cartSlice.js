@@ -5,10 +5,16 @@ const initialState = {
   totalItems: 0,
 };
 
+// =========================
+// ID DU PRODUIT
+// =========================
 const getItemId = (item) => {
-  return item._id || item.id;
+  return item.productId || item._id || item.id;
 };
 
+// =========================
+// TOTAL ARTICLES
+// =========================
 const calculateTotalItems = (items) => {
   return items.reduce(
     (total, item) => total + Number(item.quantite || 1),
@@ -31,28 +37,41 @@ const cartSlice = createSlice({
       const newItemId = getItemId(newItem);
 
       const existingItem = state.items.find(
-        (item) => getItemId(item)?.toString() === newItemId?.toString()
+        (item) =>
+          getItemId(item)?.toString() ===
+          newItemId?.toString()
       );
 
-      const quantityToAdd = Number(newItem.quantite || 1);
+      const quantityToAdd = Number(
+        newItem.quantite || 1
+      );
 
       if (existingItem) {
         existingItem.quantite =
-          Number(existingItem.quantite || 1) + quantityToAdd;
+          Number(existingItem.quantite || 1) +
+          quantityToAdd;
       } else {
+        const productId =
+          newItem.productId ||
+          newItem._id ||
+          newItem.id;
+
         state.items.push({
           ...newItem,
 
-          // On conserve l'identifiant MongoDB
-          // et on ajoute aussi id pour compatibilité avec ton frontend
-          id: newItem.id || newItem._id,
-          _id: newItem._id || newItem.id,
+          // ID PRODUIT MYSQL
+          productId,
+
+          // Compatibilité frontend
+          id: productId,
+          _id: productId,
 
           quantite: quantityToAdd,
         });
       }
 
-      state.totalItems = calculateTotalItems(state.items);
+      state.totalItems =
+        calculateTotalItems(state.items);
     },
 
     // =========================
@@ -63,10 +82,12 @@ const cartSlice = createSlice({
 
       state.items = state.items.filter(
         (item) =>
-          getItemId(item)?.toString() !== idToRemove?.toString()
+          getItemId(item)?.toString() !==
+          idToRemove?.toString()
       );
 
-      state.totalItems = calculateTotalItems(state.items);
+      state.totalItems =
+        calculateTotalItems(state.items);
     },
 
     // =========================
@@ -76,23 +97,30 @@ const cartSlice = createSlice({
       const { id, quantite } = action.payload;
 
       const item = state.items.find(
-        (i) => getItemId(i)?.toString() === id?.toString()
+        (i) =>
+          getItemId(i)?.toString() ===
+          id?.toString()
       );
 
       if (item) {
         const newQuantity = Number(quantite);
 
-        if (!Number.isFinite(newQuantity) || newQuantity <= 0) {
+        if (
+          !Number.isFinite(newQuantity) ||
+          newQuantity <= 0
+        ) {
           state.items = state.items.filter(
             (i) =>
-              getItemId(i)?.toString() !== id?.toString()
+              getItemId(i)?.toString() !==
+              id?.toString()
           );
         } else {
           item.quantite = newQuantity;
         }
       }
 
-      state.totalItems = calculateTotalItems(state.items);
+      state.totalItems =
+        calculateTotalItems(state.items);
     },
 
     // =========================
@@ -104,24 +132,42 @@ const cartSlice = createSlice({
     },
 
     // =========================
-    // RÉCUPÉRER LE PANIER BACKEND
+    // RÉCUPÉRER LE PANIER MYSQL
     // =========================
     updateBackendCart: (state, action) => {
-      const backendItems = Array.isArray(action.payload)
+      const backendItems = Array.isArray(
+        action.payload
+      )
         ? action.payload
         : [];
 
-      state.items = backendItems.map((item) => ({
-        ...item,
+      state.items = backendItems.map((item) => {
+        // IMPORTANT :
+        // productId = ID du produit
+        // id peut être l'ID de cart_items
+        const productId =
+          item.productId ||
+          item._id ||
+          item.id;
 
-        // Compatibilité _id / id
-        id: item.id || item._id,
-        _id: item._id || item.id,
+        return {
+          ...item,
 
-        quantite: Number(item.quantite || 1),
-      }));
+          // On conserve explicitement l'ID PRODUIT
+          productId,
 
-      state.totalItems = calculateTotalItems(state.items);
+          // Le frontend utilise cet ID pour les opérations
+          id: productId,
+          _id: productId,
+
+          quantite: Number(
+            item.quantite || 1
+          ),
+        };
+      });
+
+      state.totalItems =
+        calculateTotalItems(state.items);
     },
   },
 });

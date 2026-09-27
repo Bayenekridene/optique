@@ -11,7 +11,13 @@ export const login = createAsyncThunk(
     try {
       const response = await loginUser(credentials);
 
-      const user = response.data?.user || response.data;
+      const data = response.data || {};
+      const user = data.user || data;
+
+      // ✅ Le token est à la racine de la réponse, pas dans user
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
 
       const isAdmin = user.role === 'admin';
 
@@ -19,11 +25,6 @@ export const login = createAsyncThunk(
         isAdmin ||
         user.isApproved === true ||
         user.status === 'approved';
-
-      // Sauvegarde du JWT
-      if (user.token) {
-        localStorage.setItem('token', user.token);
-      }
 
       return {
         ...user,

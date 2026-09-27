@@ -1,270 +1,332 @@
+const express = require("express");
+const crypto = require("crypto");
 
-const express = require('express');
+const pool = require("../config/db");
+const { protect, admin } = require("../middleware/authMiddleware");
+
 const router = express.Router();
 
-const Product = require('../models/Product');
-const { protect, admin } = require('../middleware/authMiddleware');
-
 // ======================================================
-// 1. OBTENIR TOUS LES PRODUITS
-// Public
+// GET /api/products
+// Produits publics actifs
 // ======================================================
 
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const products = await Product.find();
-    res.json(products);
-  } catch (err) {
-    res.status(500).json({
-      message: err.message
+    const [products] = await pool.execute(
+      `
+      SELECT
+        id,
+        name,
+        category,
+        price,
+        image,
+        subtitle,
+        reference,
+        description,
+        stock,
+        isActive,
+        createdAt,
+        updatedAt
+      FROM products
+      WHERE isActive = 1
+      ORDER BY createdAt DESC
+      `
+    );
+
+    return res.json(products);
+  } catch (error) {
+    console.error("Erreur GET produits :", error);
+    return res.status(500).json({
+      message: "Erreur lors de la récupération des produits.",
     });
   }
 });
 
 // ======================================================
-// 2. OBTENIR UN PRODUIT PAR ID
-// Public
+// GET /api/products/admin/all
+// Tous les produits — admin
 // ======================================================
 
-router.get('/:id', async (req, res) => {
+router.get("/admin/all", protect, admin, async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const [products] = await pool.execute(
+      `
+      SELECT
+        id,
+        name,
+        category,
+        price,
+        image,
+        subtitle,
+        reference,
+        description,
+        stock,
+        isActive,
+        createdAt,
+        updatedAt
+      FROM products
+      ORDER BY createdAt DESC
+      `
+    );
 
-    if (!product) {
+    return res.json(products);
+  } catch (error) {
+    console.error("Erreur GET admin produits :", error);
+    return res.status(500).json({
+      message: "Erreur lors de la récupération des produits.",
+    });
+  }
+});
+
+// ======================================================
+// GET /api/products/:id
+// Un produit public
+// ======================================================
+
+router.get("/:id", async (req, res) => {
+  try {
+    const [products] = await pool.execute(
+      `
+      SELECT
+        id,
+        name,
+        category,
+        price,
+        image,
+        subtitle,
+        reference,
+        description,
+        stock,
+        isActive,
+        createdAt,
+        updatedAt
+      FROM products
+      WHERE id = ? AND isActive = 1
+      LIMIT 1
+      `,
+      [req.params.id]
+    );
+
+    if (products.length === 0) {
       return res.status(404).json({
-        message: 'Produit introuvable'
+        message: "Produit introuvable.",
       });
     }
 
-    res.json(product);
-
-  } catch (err) {
-    res.status(400).json({
-      message: 'ID produit invalide'
+    return res.json(products[0]);
+  } catch (error) {
+    console.error("Erreur GET produit :", error);
+    return res.status(500).json({
+      message: "Erreur lors de la récupération du produit.",
     });
   }
 });
 
 // ======================================================
-// 3. AJOUTER UN PRODUIT
-// ADMIN UNIQUEMENT
+// POST /api/products
+// Ajouter un produit — admin
 // ======================================================
 
-router.post('/', protect, admin, async (req, res) => {
+router.post("/", protect, admin, async (req, res) => {
   try {
     const {
       name,
-      nom,
       category,
-      categorie,
       price,
-      prix,
       image,
-      sousTitre,
-      ref,
+      subtitle,
       reference,
       description,
-      stock
+      stock,
+      isActive,
     } = req.body;
 
-    const product = new Product({
-      name: name || nom,
-      nom: nom || name,
-
-      category: category || categorie,
-      categorie: categorie || category,
-
-      price: price !== undefined ? Number(price) : Number(prix),
-      prix: prix !== undefined ? Number(prix) : Number(price),
-
-      image,
-      sousTitre,
-
-      ref: ref || reference,
-      reference: reference || ref,
-
-      description,
-
-      stock: stock !== undefined ? Number(stock) : 1
-    });
-
-    if (!product.name) {
+    if (!name || !category || price === undefined || !image) {
       return res.status(400).json({
-        message: 'Le nom du produit est obligatoire.'
+        message: "Nom, catégorie, prix et image sont obligatoires.",
       });
     }
 
-    if (!product.category) {
-      return res.status(400).json({
-        message: 'La catégorie est obligatoire.'
-      });
-    }
+    const id = crypto.randomUUID();
 
-    if (!product.image) {
-      return res.status(400).json({
-        message: "L'image du produit est obligatoire."
-      });
-    }
+    const finalStock =
+      stock === undefined ? 0 : Number(stock);
 
-    if (!Number.isFinite(product.price) || product.price < 0) {
-      return res.status(400).json({
-        message: 'Le prix est invalide.'
-      });
-    }
+    const finalIsActive =
+      isActive === undefined ? 1 : (Boolean(isActive) ? 1 : 0);
 
-    if (!Number.isInteger(product.stock) || product.stock < 0) {
-      return res.status(400).json({
-        message: 'Le stock doit être un nombre entier positif ou égal à zéro.'
-      });
-    }
+    await pool.execute(
+      `
+      INSERT INTO products
+      (
+        id,
+        name,
+        category,
+        price,
+        image,
+        subtitle,
+        reference,
+        description,
+        stock,
+        isActive
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        id,
+        name,
+        category,
+        Number(price),
+        image,
+        subtitle || "",
+        reference || null,
+        description || "",
+        finalStock,
+        finalIsActive,
+      ]
+    );
 
-    const newProduct = await product.save();
+    const [products] = await pool.execute(
+      `
+      SELECT *
+      FROM products
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
 
-    res.status(201).json(newProduct);
+    return res.status(201).json(products[0]);
+  } catch (error) {
+    console.error("Erreur POST produit :", error);
 
-  } catch (err) {
-    res.status(400).json({
-      message: err.message
+    return res.status(400).json({
+      message: error.message,
     });
   }
 });
 
 // ======================================================
-// 4. MODIFIER UN PRODUIT
-// ADMIN UNIQUEMENT
+// PUT /api/products/:id
+// Modifier un produit — admin
 // ======================================================
 
-router.put('/:id', protect, admin, async (req, res) => {
+router.put("/:id", protect, admin, async (req, res) => {
   try {
     const allowedFields = [
-      'name',
-      'nom',
-      'category',
-      'categorie',
-      'price',
-      'prix',
-      'image',
-      'sousTitre',
-      'ref',
-      'reference',
-      'description',
-      'stock'
+      "name",
+      "category",
+      "price",
+      "image",
+      "subtitle",
+      "reference",
+      "description",
+      "stock",
+      "isActive",
     ];
 
-    const updates = {};
+    const updates = [];
+    const values = [];
 
-    allowedFields.forEach((field) => {
+    for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
-    });
+        let value = req.body[field];
 
-    if (updates.price !== undefined) {
-      updates.price = Number(updates.price);
+        if (field === "price") {
+          value = Number(value);
+        }
 
-      if (!Number.isFinite(updates.price) || updates.price < 0) {
-        return res.status(400).json({
-          message: 'Le prix est invalide.'
-        });
-      }
+        if (field === "stock") {
+          value = Number(value);
+        }
 
-      updates.prix = updates.price;
-    }
+        if (field === "isActive") {
+          value = Boolean(value) ? 1 : 0;
+        }
 
-    if (updates.prix !== undefined && updates.price === undefined) {
-      updates.prix = Number(updates.prix);
+        if (field === "reference" && value === "") {
+          value = null;
+        }
 
-      if (!Number.isFinite(updates.prix) || updates.prix < 0) {
-        return res.status(400).json({
-          message: 'Le prix est invalide.'
-        });
-      }
-
-      updates.price = updates.prix;
-    }
-
-    if (updates.stock !== undefined) {
-      updates.stock = Number(updates.stock);
-
-      if (!Number.isInteger(updates.stock) || updates.stock < 0) {
-        return res.status(400).json({
-          message: 'Le stock doit être un nombre entier positif ou égal à zéro.'
-        });
+        updates.push(`${field} = ?`);
+        values.push(value);
       }
     }
 
-    if (updates.name !== undefined) {
-      updates.nom = updates.name;
-    }
-
-    if (updates.nom !== undefined && updates.name === undefined) {
-      updates.name = updates.nom;
-    }
-
-    if (updates.category !== undefined) {
-      updates.categorie = updates.category;
-    }
-
-    if (updates.categorie !== undefined && updates.category === undefined) {
-      updates.category = updates.categorie;
-    }
-
-    if (updates.ref !== undefined) {
-      updates.reference = updates.ref;
-    }
-
-    if (updates.reference !== undefined && updates.ref === undefined) {
-      updates.ref = updates.reference;
-    }
-
-    const updatedProduct = await Product.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      {
-        new: true,
-        runValidators: true
-      }
-    );
-
-    if (!updatedProduct) {
-      return res.status(404).json({
-        message: 'Produit introuvable'
+    if (updates.length === 0) {
+      return res.status(400).json({
+        message: "Aucune modification fournie.",
       });
     }
 
-    res.json(updatedProduct);
+    values.push(req.params.id);
 
-  } catch (err) {
-    res.status(400).json({
-      message: err.message
+    const [result] = await pool.execute(
+      `
+      UPDATE products
+      SET ${updates.join(", ")}
+      WHERE id = ?
+      `,
+      values
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Produit introuvable.",
+      });
+    }
+
+    const [products] = await pool.execute(
+      `
+      SELECT *
+      FROM products
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [req.params.id]
+    );
+
+    return res.json(products[0]);
+  } catch (error) {
+    console.error("Erreur PUT produit :", error);
+
+    return res.status(400).json({
+      message: error.message,
     });
   }
 });
 
 // ======================================================
-// 5. SUPPRIMER UN PRODUIT
-// ADMIN UNIQUEMENT
+// DELETE /api/products/:id
+// Désactiver un produit — admin
 // ======================================================
 
-router.delete('/:id', protect, admin, async (req, res) => {
+router.delete("/:id", protect, admin, async (req, res) => {
   try {
-    const deletedProduct = await Product.findByIdAndDelete(
-      req.params.id
+    const [result] = await pool.execute(
+      `
+      UPDATE products
+      SET isActive = 0
+      WHERE id = ?
+      `,
+      [req.params.id]
     );
 
-    if (!deletedProduct) {
+    if (result.affectedRows === 0) {
       return res.status(404).json({
-        message: 'Produit introuvable'
+        message: "Produit introuvable.",
       });
     }
 
-    res.json({
-      message: 'Produit supprimé avec succès'
+    return res.json({
+      message: "Produit désactivé avec succès.",
     });
+  } catch (error) {
+    console.error("Erreur DELETE produit :", error);
 
-  } catch (err) {
-    res.status(400).json({
-      message: 'ID produit invalide'
+    return res.status(500).json({
+      message: "Erreur lors de la désactivation du produit.",
     });
   }
 });

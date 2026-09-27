@@ -1,54 +1,73 @@
-
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const jwt = require("jsonwebtoken");
+const pool = require("../config/db");
 
 const protect = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({
-        message: 'Accès non autorisé. Token manquant.'
+        message: "Accès non autorisé. Token manquant.",
       });
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.split(" ")[1];
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const [users] = await pool.execute(
+      `
+      SELECT
+        id,
+        nom,
+        email,
+        role,
+        isApproved
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [decoded.id]
     );
 
-    const user = await User.findById(decoded.id).select('-password');
-
-    if (!user) {
+    if (users.length === 0) {
       return res.status(401).json({
-        message: 'Utilisateur introuvable.'
+        message: "Utilisateur introuvable.",
+      });
+    }
+
+    const user = users[0];
+
+    if (!user.isApproved && user.role !== "admin") {
+      return res.status(403).json({
+        message:
+          "Votre compte n'est pas encore vérifié. Vérifiez votre email.",
       });
     }
 
     req.user = user;
 
     next();
-
   } catch (error) {
-    return res.status(401).json({
-      message: 'Token invalide ou expiré.'
-    });
+    console.error("Erreur auth :", error.message);
+
+    const message =
+      error.name === "TokenExpiredError"
+        ? "Votre session a expiré. Veuillez vous reconnecter."
+        : "Token invalide.";
+
+    return res.status(401).json({ message });
   }
 };
 
 const admin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
-    next();
-  } else {
+  if (req.user?.role !== "admin") {
     return res.status(403).json({
-      message: 'Accès réservé à l’administrateur.'
+      message: "Accès réservé à l'administrateur.",
     });
   }
+
+  next();
 };
 
-module.exports = {
-  protect,
-  admin
-};
+module.exports = { protect, admin };

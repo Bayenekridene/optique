@@ -3,13 +3,17 @@ import { Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
 export default function ProtectedRoute({ children, adminOnly = false }) {
-  const { userInfo, isAuthenticated } = useSelector((state) => state.user);
+  const { userInfo } = useSelector((state) => state.user);
+
+  // ✅ CORRIGÉ : isAuthenticated n'existait pas dans le slice
+  const isAuthenticated = !!userInfo;
+  const isAdmin = userInfo?.role === 'admin' || userInfo?.isAdmin === true;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && userInfo?.role !== 'admin') {
+  if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 

@@ -13,7 +13,9 @@ import BayeneFooter from './components/bayenFooter';
 import ContactSection from './components/Contact';
 import AdminLogin from './components/AdminLogin';
 import Success from './components/Success';
-
+import AdminProducts from './features/AdminProducts';
+import DeliverySettings from './pages/DeliverySettings';
+import AdminOrders from './pages/AdminOrders';
 
 function App() {
   const { userInfo } = useSelector((state) => state.user);
@@ -55,7 +57,18 @@ function App() {
     )
   }
 />
-          
+       <Route
+  path="/admin/products"
+  element={isAdmin ? <AdminProducts /> : <AdminLogin />}
+/>
+   <Route
+  path="/admin/delivery"
+  element={isAdmin ? <DeliverySettings /> : <AdminLogin />}
+/>
+<Route
+  path="/admin/orders"
+  element={isAdmin ? <AdminOrders /> : <AdminLogin />}
+/>
           <Route path="/collection" element={<CollectionsOverview />} />
           <Route path="/collection/:collectionId" element={<CollectionDetail />} />
           <Route path="/product/:productId" element={<ProductDetail />} />

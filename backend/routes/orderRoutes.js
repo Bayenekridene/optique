@@ -1,138 +1,178 @@
-const express = require('express');
+const express = require("express");
+
+const pool = require("../config/db");
+const { protect, admin } = require("../middleware/authMiddleware");
+
 const router = express.Router();
 
-const mongoose = require('mongoose');
+// ===============================
+// MES COMMANDES — utilisateur connecté
+// ===============================
+router.get("/my-orders", protect, async (req, res) => {
+  try {
+    const [orders] = await pool.execute(
+      `
+      SELECT
+        id,
+        userId,
+        customerEmail,
+        subtotal,
+        shipping,
+        total,
+        stripeSessionId,
+        paymentStatus,
+        createdAt,
+        updatedAt
+      FROM orders
+      WHERE userId = ?
+      ORDER BY createdAt DESC
+      `,
+      [req.user.id]
+    );
 
-const Order = require('../models/Order');
-const { protect, admin } = require('../middleware/authMiddleware');
-
-// ======================================================
-// GET /api/orders/by-session/:sessionId
-// UTILISATEUR CONNECTÉ
-// ======================================================
-
-router.get(
-  '/by-session/:sessionId',
-  protect,
-  async (req, res) => {
-    try {
-      const { sessionId } = req.params;
-
-      if (!sessionId) {
-        return res.status(400).json({
-          error: 'Session Stripe invalide.'
-        });
-      }
-
-      const order =
-        await Order.findOne({
-          stripeSessionId: sessionId
-        });
-
-      if (!order) {
-        return res.status(404).json({
-          error: 'Commande introuvable.'
-        });
-      }
-
-      // ==================================================
-      // 🔒 SÉCURITÉ
-      // L'utilisateur ne peut voir que sa commande.
-      // L'admin peut voir toutes les commandes.
-      // ==================================================
-
-      const isAdmin =
-        req.user.role === 'admin' ||
-        req.user.isAdmin === true;
-
-      if (
-        !isAdmin &&
-        order.userId.toString() !==
-          req.user._id.toString()
-      ) {
-        return res.status(403).json({
-          error:
-            'Accès interdit à cette commande.'
-        });
-      }
-
-      return res.json(order);
-
-    } catch (error) {
-      console.error(
-        '❌ Erreur récupération commande :',
-        error
+    for (const order of orders) {
+      const [items] = await pool.execute(
+        `
+        SELECT
+          id,
+          productId,
+          name,
+          price,
+          quantity,
+          image
+        FROM order_items
+        WHERE orderId = ?
+        `,
+        [order.id]
       );
 
-      return res.status(500).json({
-        error: 'Erreur serveur.'
+      order.items = items;
+    }
+
+    return res.json(orders);
+  } catch (error) {
+    console.error("Erreur récupération commandes :", error.message);
+    return res.status(500).json({ error: "Erreur serveur." });
+  }
+});
+
+// ===============================
+// UNE COMMANDE VIA SESSION STRIPE
+// ===============================
+router.get("/by-session/:sessionId", protect, async (req, res) => {
+  try {
+    const [orders] = await pool.execute(
+      `
+      SELECT
+        id,
+        userId,
+        customerEmail,
+        subtotal,
+        shipping,
+        total,
+        stripeSessionId,
+        paymentStatus,
+        createdAt,
+        updatedAt
+      FROM orders
+      WHERE stripeSessionId = ?
+      LIMIT 1
+      `,
+      [String(req.params.sessionId)]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        error:
+          "Commande introuvable. Le webhook Stripe peut encore être en cours de traitement.",
       });
     }
+
+    const order = orders[0];
+
+    const isOwner = String(order.userId) === String(req.user.id);
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        error: "Accès interdit à cette commande.",
+      });
+    }
+
+    const [items] = await pool.execute(
+      `
+      SELECT
+        id,
+        productId,
+        name,
+        price,
+        quantity,
+        image
+      FROM order_items
+      WHERE orderId = ?
+      `,
+      [order.id]
+    );
+
+    order.items = items;
+
+    return res.json(order);
+  } catch (error) {
+    console.error("Erreur récupération commande :", error.message);
+    return res.status(500).json({ error: "Erreur serveur." });
   }
-);
+});
 
-// ======================================================
-// GET /api/orders
-// ADMIN UNIQUEMENT
-// ======================================================
+// ===============================
+// TOUTES LES COMMANDES — ADMIN
+// ===============================
+router.get("/", protect, admin, async (req, res) => {
+  try {
+    const [orders] = await pool.execute(
+      `
+      SELECT
+        o.id,
+        o.userId,
+        o.customerEmail,
+        o.subtotal,
+        o.shipping,
+        o.total,
+        o.stripeSessionId,
+        o.paymentStatus,
+        o.createdAt,
+        o.updatedAt,
+        u.nom AS userNom,
+        u.email AS userEmail
+      FROM orders o
+      LEFT JOIN users u ON u.id = o.userId
+      ORDER BY o.createdAt DESC
+      `
+    );
 
-router.get(
-  '/',
-  protect,
-  admin,
-  async (req, res) => {
-    try {
-      const orders =
-        await Order.find()
-          .sort({
-            createdAt: -1
-          });
-
-      return res.json(orders);
-
-    } catch (error) {
-      console.error(
-        '❌ Erreur récupération commandes :',
-        error
+    for (const order of orders) {
+      const [items] = await pool.execute(
+        `
+        SELECT
+          id,
+          productId,
+          name,
+          price,
+          quantity,
+          image
+        FROM order_items
+        WHERE orderId = ?
+        `,
+        [order.id]
       );
 
-      return res.status(500).json({
-        error: 'Erreur serveur.'
-      });
+      order.items = items;
     }
+
+    return res.json(orders);
+  } catch (error) {
+    console.error("Erreur récupération commandes :", error.message);
+    return res.status(500).json({ error: "Erreur serveur." });
   }
-);
-
-// ======================================================
-// GET /api/orders/my-orders
-// UTILISATEUR CONNECTÉ
-// ======================================================
-
-router.get(
-  '/my-orders',
-  protect,
-  async (req, res) => {
-    try {
-      const orders =
-        await Order.find({
-          userId: req.user._id
-        }).sort({
-          createdAt: -1
-        });
-
-      return res.json(orders);
-
-    } catch (error) {
-      console.error(
-        '❌ Erreur récupération commandes utilisateur :',
-        error
-      );
-
-      return res.status(500).json({
-        error: 'Erreur serveur.'
-      });
-    }
-  }
-);
+});
 
 module.exports = router;
